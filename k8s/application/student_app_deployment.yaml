@@ -14,6 +14,18 @@ spec:
       labels:
         app: student-app
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: student-app
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: student-app
           image: ptibor84/student-java-crud-app:latest

@@ -106,10 +106,17 @@ terraform version
 
 ## Quick Start
 
-### 1. Build Docker Image
+### 1. Build and push Docker Image
 
 ```bash
+# Build
 docker build -t student-java-crud-app:latest .
+
+# Retag
+docker tag student-java-crud-app:latest <registry>/<repo>:<version>
+
+# Push
+docker push <registry>/<repo>:<version>
 ```
 
 ### 2. Local Testing with Docker Compose
@@ -135,10 +142,17 @@ kubectl apply -f kind/metrics_server_components.yaml
 
 # Install kube-state-metrics
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 helm install kube-state-metrics prometheus-community/kube-state-metrics
 ```
 
 #### Configure Database Secret
+
+Create base namespace for application:
+
+```bash
+kubectl create namespace student-app
+```
 
 **Option A: Use existing YAML file**:
 
@@ -149,8 +163,6 @@ kubectl apply -f k8s/application/student_app_secret_kind.yaml
 **Option B: Create manually via CLI**:
 
 ```bash
-kubectl create namespace student-app
-
 kubectl create secret generic app-secret \
   --namespace student-app \
   --from-literal=SPRING_DATASOURCE_URL="jdbc:postgresql://postgres:5432/student" \
@@ -164,16 +176,23 @@ kubectl create secret generic app-secret \
 # Deploy application
 kubectl apply -f k8s/application/
 
+# Wait until all application pods are running
+kubectl -n student-app get pods
+
 # Deploy monitoring stack
+kubectl apply -f k8s/monitoring/namespace.yaml
 kubectl apply -f k8s/monitoring/
+
+# Wait until all pods run
+kubectl -n monitoring get pods
 ```
 
 ### 4. Access Services
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Application | [http://localhost:8080/api/v1/student](http://localhost:8080/api/v1/student) | - |
-| Grafana | [http://localhost:3000](http://localhost:3000) | admin / admin123 |
+| Application | [http://<NODE_IP>:30080/api/v1/student](http://<NODE_IP>:30080/api/v1/student) | - |
+| Grafana | [http://<NODE_IP>:30300](http://<NODE_IP>:30300) | admin / admin123 |
 
 #### Get Cluster Node IP Address
 
@@ -380,12 +399,49 @@ kubectl get hpa -n student-app -w
 - Secrets injected as environment variables (not mounted files)
 - Secrets not committed to git (use `.gitignore`)
 
-### Dockerfile Best Practices
+### Dockerfile Security Features
+
+| Feature | Implementation | Benefit |
+|---------|---------------|---------|
+| Multi-stage build | `FROM ... AS builder` → `FROM ...` | Build tools not in final image |
+| Non-root user | `adduser` + `USER appuser` | Prevents privilege escalation |
+| Alpine base | `eclipse-temurin:21-jre-alpine` | Minimal attack surface (~200MB) |
+| Health check | `HEALTHCHECK` instruction | Container-level health monitoring |
+| JVM container support | `-XX:+UseContainerSupport` | Respects container memory limits |
+
+### Dockerfile Example
 
 ```dockerfile
-# Multi-stage build reduces image size
-FROM eclipse-temurin:21-jdk-alpine AS builder  # Build stage
-FROM eclipse-temurin:21-jre-alpine             # Runtime stage (no JDK)
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache maven
+COPY app/ .
+RUN mvn clean package -DskipTests
+
+# Stage 2: Runtime
+FROM eclipse-temurin:21-jre-alpine
+
+# Security: Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy JAR with correct ownership
+COPY --from=builder --chown=appuser:appgroup /app/target/*.jar app.jar
+
+# Security: Run as non-root user
+USER appuser
+
+# Container health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+EXPOSE 8080
+
+# JVM container-aware settings
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 ```
 
 ## Troubleshooting
