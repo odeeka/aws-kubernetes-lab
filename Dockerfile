@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache maven
+RUN apk add --no-cache maven=3.9.9-r0
 COPY app/ .
 RUN mvn clean package -DskipTests
 
