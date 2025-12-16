@@ -1,0 +1,15 @@
+# Ignore everything
+*
+
+# Except these files
+!app/
+!app/**
+
+# Ignore target inside app
+app/target/
+app/*.class
+app/*.jar
+
+# Ignore IDE files
+app/.idea/
+app/*.iml
