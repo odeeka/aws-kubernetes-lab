@@ -444,6 +444,61 @@ EXPOSE 8080
 ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 ```
 
+### Image Security Scanning
+
+#### Trivy (Image Vulnerabilities)
+
+```bash
+# Install Trivy
+sudo apt install -y wget apt-transport-https gnupg lsb-release
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+sudo apt update && sudo apt install -y trivy
+
+# Scan image
+trivy image student-java-crud-app:latest
+
+# Scan only HIGH and CRITICAL vulnerabilities
+trivy image --severity HIGH,CRITICAL student-java-crud-app:latest
+
+# Fail CI/CD if vulnerabilities found
+trivy image --exit-code 1 --severity HIGH,CRITICAL student-java-crud-app:latest
+```
+
+#### Hadolint (Dockerfile Linting)
+
+```bash
+# Install Hadolint
+sudo wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+sudo chmod +x /usr/local/bin/hadolint
+
+# Lint Dockerfile
+hadolint Dockerfile
+```
+
+#### Tool Comparison
+
+| Tool | Purpose | Best For |
+|------|---------|----------|
+| **Trivy** | CVE scanning in images | Finding vulnerable packages |
+| **Hadolint** | Dockerfile best practices | Catching misconfigurations |
+
+#### CI/CD Integration (GitHub Actions)
+
+```yaml
+- name: Lint Dockerfile
+  uses: hadolint/hadolint-action@v3.1.0
+  with:
+    dockerfile: Dockerfile
+
+- name: Scan image with Trivy
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: student-java-crud-app:latest
+    severity: HIGH,CRITICAL
+    exit-code: 1
+```
+
 ## Troubleshooting
 
 ```bash
@@ -461,7 +516,7 @@ curl -G http://localhost:3100/loki/api/v1/label/pod/values | jq
 
 ---
 
-## AWS Deployment
+## AWS Deployments
 
 ### Configure AWS RDS Secret
 
@@ -484,8 +539,7 @@ kubectl create secret generic app-secret \
 ```
 
 > Replace `<RDS_ENDPOINT>`, `<DB_USERNAME>`, and `<DB_PASSWORD>` with your AWS RDS values.
-
-> For full AWS EKS/RDS deployment instructions, see [aws/eks/README.md](aws/eks/README.md).
+For full AWS EKS/RDS deployment instructions, see [aws/eks/README.md](aws/eks/README.md).
 
 ### AWS Infrastructure with Terraform
 
